@@ -45,8 +45,13 @@ async def _download_photo(msg, context) -> bytes | None:
         file_id = msg.photo[-1].file_id
     else:
         return None
-    file = await context.bot.get_file(file_id)
-    return bytes(await file.download_as_bytearray())
+    try:
+        file = await asyncio.wait_for(context.bot.get_file(file_id), timeout=30.0)
+        data = await asyncio.wait_for(file.download_as_bytearray(), timeout=30.0)
+        return bytes(data)
+    except asyncio.TimeoutError:
+        logger.error("Таймаут скачивания фото file_id=%s", file_id)
+        return None
 
 
 def _resize(data: bytes, max_side: int = 1200) -> bytes:
@@ -94,7 +99,7 @@ async def cmd_recs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def got_photo1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     data = await _download_photo(update.message, context)
     if data is None:
-        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой")
+        await update.message.reply_text("⚠️ Не удалось загрузить фото. Отправь ещё раз.")
         return PHOTO1
     context.user_data["img1"] = data
     await update.message.reply_text(
@@ -122,7 +127,7 @@ async def got_style1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def got_photo2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     data = await _download_photo(update.message, context)
     if data is None:
-        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой")
+        await update.message.reply_text("⚠️ Не удалось загрузить фото. Отправь ещё раз.")
         return PHOTO2
     context.user_data["img2"] = data
     await update.message.reply_text(
@@ -173,6 +178,15 @@ async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Необработанная ошибка: %s", context.error, exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text(
+            "❌ Что-то пошло не так. Начни заново — /recs",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -189,6 +203,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(recs_handler)
+    app.add_error_handler(error_handler)
 
     logger.info("Бот запущен…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
