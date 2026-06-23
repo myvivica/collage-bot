@@ -49,9 +49,18 @@ async def _download_photo(msg, context) -> bytes | None:
     return bytes(await file.download_as_bytearray())
 
 
+def _resize(data: bytes, max_side: int = 1200) -> bytes:
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    if max(img.size) > max_side:
+        img.thumbnail((max_side, max_side), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
 def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: str) -> bytes:
-    b64_1 = base64.b64encode(img1_bytes).decode()
-    b64_2 = base64.b64encode(img2_bytes).decode()
+    b64_1 = base64.b64encode(_resize(img1_bytes)).decode()
+    b64_2 = base64.b64encode(_resize(img2_bytes)).decode()
     html = build_html(style1=style1, photo_b64_1=b64_1, style2=style2, photo_b64_2=b64_2)
     return render_card(html)
 
@@ -139,9 +148,14 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     loop = asyncio.get_event_loop()
     try:
-        card_bytes = await loop.run_in_executor(
-            None, make_recs_card, img1, style1, img2, style
+        card_bytes = await asyncio.wait_for(
+            loop.run_in_executor(None, make_recs_card, img1, style1, img2, style),
+            timeout=60.0,
         )
+    except asyncio.TimeoutError:
+        logger.error("Таймаут генерации карточки")
+        await update.message.reply_text("❌ Генерация заняла слишком долго. Попробуй ещё раз.")
+        return ConversationHandler.END
     except Exception as e:
         logger.error("Ошибка генерации карточки: %s", e)
         await update.message.reply_text("❌ Ошибка генерации. Попробуй ещё раз.")

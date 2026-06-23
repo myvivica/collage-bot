@@ -194,10 +194,13 @@ def render_card(html: str, scale: int = 2) -> bytes:
             viewport={"width": 360, "height": 480},
             device_scale_factor=scale,
         )
-        page.set_content(html, wait_until="networkidle")
+        page.set_content(html, wait_until="load", timeout=20000)
+        # ждём загрузки веб-шрифтов (Google Fonts)
+        page.evaluate("document.fonts.ready")
         png_bytes = page.screenshot(
             clip={"x": 0, "y": 0, "width": 360, "height": 480},
             type="png",
+            timeout=15000,
         )
         browser.close()
 
