@@ -184,7 +184,7 @@ def build_html(
 </html>"""
 
 
-def render_card(html: str, scale: int = 2) -> bytes:
+def render_card(html: str, scale: int = 3) -> bytes:
     """Рендерит HTML → PNG через Playwright. scale=2 даёт retina-качество."""
     from playwright.sync_api import sync_playwright
 
@@ -208,6 +208,6 @@ def render_card(html: str, scale: int = 2) -> bytes:
     import io as _io
     img = Image.open(_io.BytesIO(png_bytes))
     buf = _io.BytesIO()
-    img.save(buf, "JPEG", quality=95)
+    img.save(buf, "JPEG", quality=97)
     buf.seek(0)
     return buf.read()
