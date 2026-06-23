@@ -93,7 +93,7 @@ def build_html(
     display: block;
   }}
   .product-info {{
-    padding: 10px 10px 14px;
+    padding: 10px 10px 12px;
     flex-shrink: 0;
   }}
   .product-label {{
@@ -110,6 +110,21 @@ def build_html(
     font-weight: 400;
     color: #890f1e;
     line-height: 1.3;
+    margin-bottom: 9px;
+  }}
+  .btn {{
+    display: block;
+    background: #890f1e;
+    color: #ffecd7;
+    border-radius: 8px;
+    padding: 8px 0;
+    text-align: center;
+    font-family: 'NT Somic', sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    text-decoration: none;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
   }}
   .logo-footer {{
     flex: 1;
@@ -143,7 +158,8 @@ def build_html(
       </div>
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
-        <p class="product-name">с трусиками {style1}</p>
+        <p class="product-name">с трусиками {style1.lower()}</p>
+        <a class="btn">Перейти →</a>
       </div>
     </div>
     <div class="product">
@@ -152,7 +168,8 @@ def build_html(
       </div>
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
-        <p class="product-name">с трусиками {style2}</p>
+        <p class="product-name">с трусиками {style2.lower()}</p>
+        <a class="btn">Перейти →</a>
       </div>
     </div>
   </div>
