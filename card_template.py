@@ -204,10 +204,4 @@ def render_card(html: str, scale: int = 3) -> bytes:
         )
         browser.close()
 
-    from PIL import Image
-    import io as _io
-    img = Image.open(_io.BytesIO(png_bytes))
-    buf = _io.BytesIO()
-    img.save(buf, "JPEG", quality=97)
-    buf.seek(0)
-    return buf.read()
+    return png_bytes

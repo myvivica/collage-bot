@@ -189,7 +189,7 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_document(
         document=io.BytesIO(card_bytes),
-        filename="recs.jpg",
+        filename="recs.png",
         caption=f"{style1} · {style}",
     )
     return ConversationHandler.END
