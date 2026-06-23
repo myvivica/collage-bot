@@ -18,6 +18,7 @@ from telegram.ext import (
     ConversationHandler,
     ContextTypes,
     MessageHandler,
+    PicklePersistence,
     filters,
 )
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 BASE_DIR = Path(__file__).parent
+PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
 
 # ── /recs ─────────────────────────────────────────────────────────────────────
 
@@ -38,13 +40,15 @@ STYLES = ["Танга", "Бразильяна", "Стринги"]
 STYLE_KB = ReplyKeyboardMarkup([[s] for s in STYLES], one_time_keyboard=True, resize_keyboard=True)
 
 
-async def _download_photo(msg, context) -> bytes | None:
+def _get_file_id(msg) -> str | None:
     if msg.document and msg.document.mime_type and "image" in msg.document.mime_type:
-        file_id = msg.document.file_id
-    elif msg.photo:
-        file_id = msg.photo[-1].file_id
-    else:
-        return None
+        return msg.document.file_id
+    if msg.photo:
+        return msg.photo[-1].file_id
+    return None
+
+
+async def _download_file_id(file_id: str, context) -> bytes | None:
     try:
         file = await asyncio.wait_for(context.bot.get_file(file_id), timeout=30.0)
         data = await asyncio.wait_for(file.download_as_bytearray(), timeout=30.0)
@@ -97,11 +101,11 @@ async def cmd_recs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def got_photo1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    data = await _download_photo(update.message, context)
-    if data is None:
-        await update.message.reply_text("⚠️ Не удалось загрузить фото. Отправь ещё раз.")
+    file_id = _get_file_id(update.message)
+    if file_id is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой.")
         return PHOTO1
-    context.user_data["img1"] = data
+    context.user_data["fid1"] = file_id
     await update.message.reply_text(
         "Шаг 2/4 — выбери фасон для *левой* карточки:",
         parse_mode="Markdown",
@@ -125,11 +129,11 @@ async def got_style1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def got_photo2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    data = await _download_photo(update.message, context)
-    if data is None:
-        await update.message.reply_text("⚠️ Не удалось загрузить фото. Отправь ещё раз.")
+    file_id = _get_file_id(update.message)
+    if file_id is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой.")
         return PHOTO2
-    context.user_data["img2"] = data
+    context.user_data["fid2"] = file_id
     await update.message.reply_text(
         "Шаг 4/4 — выбери фасон для *правой* карточки:",
         parse_mode="Markdown",
@@ -143,14 +147,31 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if style not in STYLES:
         await update.message.reply_text("⚠️ Выбери фасон из списка", reply_markup=STYLE_KB)
         return STYLE2
-    img1 = context.user_data["img1"]
-    style1 = context.user_data["style1"]
-    img2 = context.user_data["img2"]
+
+    fid1 = context.user_data.get("fid1")
+    fid2 = context.user_data.get("fid2")
+    style1 = context.user_data.get("style1")
+
+    if not fid1 or not fid2 or not style1:
+        await update.message.reply_text(
+            "⚠️ Данные сессии потеряны. Начни заново — /recs",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return ConversationHandler.END
+
     await update.message.reply_text(
         f"✅ Правая: *{style}*\n\n⏳ Генерирую карточку…",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+    img1 = await _download_file_id(fid1, context)
+    img2 = await _download_file_id(fid2, context)
+
+    if img1 is None or img2 is None:
+        await update.message.reply_text("❌ Не удалось скачать фото. Попробуй ещё раз — /recs")
+        return ConversationHandler.END
+
     loop = asyncio.get_event_loop()
     try:
         card_bytes = await asyncio.wait_for(
@@ -165,6 +186,7 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.error("Ошибка генерации карточки: %s", e)
         await update.message.reply_text("❌ Ошибка генерации. Попробуй ещё раз.")
         return ConversationHandler.END
+
     await update.message.reply_document(
         document=io.BytesIO(card_bytes),
         filename="recs.jpg",
@@ -178,6 +200,14 @@ async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+async def stray_photo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    """Фото вне диалога — бот перезапустился и потерял состояние."""
+    await update.message.reply_text(
+        "Начни заново — /recs",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Необработанная ошибка: %s", context.error, exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
@@ -188,7 +218,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main() -> None:
-    app = Application.builder().token(BOT_TOKEN).build()
+    persistence = PicklePersistence(filepath=str(PERSISTENCE_PATH))
+    app = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
 
     recs_handler = ConversationHandler(
         entry_points=[CommandHandler("recs", cmd_recs)],
@@ -199,10 +230,13 @@ def main() -> None:
             STYLE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_style2)],
         },
         fallbacks=[CommandHandler("cancel", cancel_recs)],
+        persistent=True,
+        name="recs_conv",
     )
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(recs_handler)
+    app.add_handler(MessageHandler(PHOTO_FILTER, stray_photo))
     app.add_error_handler(error_handler)
 
     logger.info("Бот запущен…")
