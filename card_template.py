@@ -112,6 +112,7 @@ def build_html(
     font-weight: 500;
     color: #890f1e;
     line-height: 1.3;
+    letter-spacing: 0.4px;
     margin-bottom: 9px;
   }}
   .btn {{
