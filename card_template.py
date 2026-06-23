@@ -108,7 +108,7 @@ def build_html(
   }}
   .product-name {{
     font-family: 'Montserrat', sans-serif;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 400;
     color: #890f1e;
     line-height: 1.3;
@@ -123,7 +123,7 @@ def build_html(
     text-align: center;
     font-family: 'Montserrat', sans-serif;
     font-size: 10px;
-    font-weight: 500;
+    font-weight: 700;
     text-decoration: none;
     letter-spacing: 0.8px;
     text-transform: uppercase;
