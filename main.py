@@ -3,6 +3,7 @@ Collage Bot — коллажи 2×2 + рекомендации трусиков 
 """
 
 import asyncio
+import base64
 import io
 import logging
 import os
@@ -10,8 +11,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from PIL import Image
-from telegram import Update
 from card_template import build_html, render_card
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -25,8 +26,6 @@ logging.basicConfig(format="%(asctime)s %(levelname)s %(message)s", level=loggin
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
-
-# ── Пути к ресурсам ───────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent
 
@@ -62,38 +61,30 @@ def make_collage(images: list[Image.Image]) -> bytes:
 
 # ── Рекомендации /recs ────────────────────────────────────────────────────────
 
-ARTICLE1, ARTICLE2 = range(2)
+PHOTO1, STYLE1, PHOTO2, STYLE2 = range(4)
+
+PHOTO_FILTER = (filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND
+
+STYLES = ["Танга", "Бразильяна", "Стринги"]
+STYLE_KB = ReplyKeyboardMarkup([[s] for s in STYLES], one_time_keyboard=True, resize_keyboard=True)
 
 
-def _get_basket(vol: int) -> int:
-    table = [
-        (143,1),(287,2),(431,3),(719,4),(1007,5),(1061,6),(1115,7),(1169,8),
-        (1313,9),(1601,10),(1655,11),(1919,12),(2045,13),(2189,14),(2405,15),
-        (2621,16),(2837,17),(3053,18),(3269,19),(3485,20),(3701,21),(3917,22),
-        (4133,23),(4349,24),(4565,25),(4781,26),(4997,27),(5213,28),(5429,29),
-    ]
-    for threshold, basket in table:
-        if vol <= threshold:
-            return basket
-    return 30
+async def _download_photo(msg, context) -> bytes | None:
+    """Скачивает фото из сообщения, возвращает bytes или None."""
+    if msg.document and msg.document.mime_type and "image" in msg.document.mime_type:
+        file_id = msg.document.file_id
+    elif msg.photo:
+        file_id = msg.photo[-1].file_id
+    else:
+        return None
+    file = await context.bot.get_file(file_id)
+    return bytes(await file.download_as_bytearray())
 
 
-def wb_photo_url(nm: int) -> str:
-    vol = nm // 100_000
-    part = nm // 1_000
-    basket = _get_basket(vol)
-    return f"https://basket-{basket:02d}.wbbasket.ru/vol{vol}/part{part}/{nm}/images/big/1.webp"
-
-
-def make_recs_card(nm1: int, style1: str, nm2: int, style2: str) -> bytes:
-    html = build_html(
-        style1=style1,
-        photo_url1=wb_photo_url(nm1),
-        product_url1=f"https://www.wildberries.ru/catalog/{nm1}/detail.aspx",
-        style2=style2,
-        photo_url2=wb_photo_url(nm2),
-        product_url2=f"https://www.wildberries.ru/catalog/{nm2}/detail.aspx",
-    )
+def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: str) -> bytes:
+    b64_1 = base64.b64encode(img1_bytes).decode()
+    b64_2 = base64.b64encode(img2_bytes).decode()
+    html = build_html(style1=style1, photo_b64_1=b64_1, style2=style2, photo_b64_2=b64_2)
     return render_card(html)
 
 
@@ -168,52 +159,77 @@ async def cmd_recs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     await update.message.reply_text(
         "👙 *Рекомендации трусиков*\n\n"
-        "Пришли артикул WB и фасон первого комплекта:\n"
-        "`473725009 танга`",
+        "Шаг 1/4 — загрузи фото для *левой* карточки:",
         parse_mode="Markdown",
     )
-    return ARTICLE1
+    return PHOTO1
 
 
-def _parse_article_input(text: str) -> tuple[int, str] | None:
-    parts = text.strip().split(maxsplit=1)
-    if not parts:
-        return None
-    try:
-        nm = int(parts[0])
-    except ValueError:
-        return None
-    style = parts[1].strip() if len(parts) > 1 else "—"
-    return nm, style
-
-
-async def got_article1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    parsed = _parse_article_input(update.message.text or "")
-    if not parsed:
-        await update.message.reply_text("⚠️ Формат: `473725009 танга`", parse_mode="Markdown")
-        return ARTICLE1
-    context.user_data["nm1"], context.user_data["style1"] = parsed
+async def got_photo1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    data = await _download_photo(update.message, context)
+    if data is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой")
+        return PHOTO1
+    context.user_data["img1"] = data
     await update.message.reply_text(
-        f"✅ Первый: артикул `{parsed[0]}`, фасон *{parsed[1]}*\n\n"
-        "Теперь второй комплект:",
+        "✅ Фото получено\n\nШаг 2/4 — выбери фасон для *левой* карточки:",
         parse_mode="Markdown",
+        reply_markup=STYLE_KB,
     )
-    return ARTICLE2
+    return STYLE1
 
 
-async def got_article2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    parsed = _parse_article_input(update.message.text or "")
-    if not parsed:
-        await update.message.reply_text("⚠️ Формат: `398567780 стринги`", parse_mode="Markdown")
-        return ARTICLE2
-    nm2, style2 = parsed
-    nm1 = context.user_data["nm1"]
+async def got_style1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    style = (update.message.text or "").strip()
+    if style not in STYLES:
+        await update.message.reply_text(
+            "⚠️ Выбери фасон из списка", reply_markup=STYLE_KB
+        )
+        return STYLE1
+    context.user_data["style1"] = style
+    await update.message.reply_text(
+        f"✅ Левая карточка: *{style}*\n\n"
+        "Шаг 3/4 — загрузи фото для *правой* карточки:",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    return PHOTO2
+
+
+async def got_photo2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    data = await _download_photo(update.message, context)
+    if data is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой")
+        return PHOTO2
+    context.user_data["img2"] = data
+    await update.message.reply_text(
+        "✅ Фото получено\n\nШаг 4/4 — выбери фасон для *правой* карточки:",
+        parse_mode="Markdown",
+        reply_markup=STYLE_KB,
+    )
+    return STYLE2
+
+
+async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    style = (update.message.text or "").strip()
+    if style not in STYLES:
+        await update.message.reply_text(
+            "⚠️ Выбери фасон из списка", reply_markup=STYLE_KB
+        )
+        return STYLE2
+    style2 = style
+    img1 = context.user_data["img1"]
     style1 = context.user_data["style1"]
-    await update.message.reply_text("⏳ Генерирую карточку…")
+    img2 = context.user_data["img2"]
+    await update.message.reply_text(
+        f"✅ Правая карточка: *{style2}*\n\n⏳ Генерирую карточку…",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove(),
+    )
     loop = asyncio.get_event_loop()
     try:
         card_bytes = await loop.run_in_executor(
-            None, make_recs_card, nm1, style1, nm2, style2
+            None, make_recs_card, img1, style1, img2, style2
         )
     except Exception as e:
         logger.error("Ошибка генерации карточки: %s", e)
@@ -222,7 +238,7 @@ async def got_article2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_document(
         document=io.BytesIO(card_bytes),
         filename="recs.jpg",
-        caption=f"с трусиками {style1} vs с трусиками {style2}",
+        caption=f"Левая: {style1} · Правая: {style2}",
     )
     return ConversationHandler.END
 
@@ -240,8 +256,10 @@ def main() -> None:
     recs_handler = ConversationHandler(
         entry_points=[CommandHandler("recs", cmd_recs)],
         states={
-            ARTICLE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_article1)],
-            ARTICLE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_article2)],
+            PHOTO1: [MessageHandler(PHOTO_FILTER, got_photo1)],
+            STYLE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_style1)],
+            PHOTO2: [MessageHandler(PHOTO_FILTER, got_photo2)],
+            STYLE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_style2)],
         },
         fallbacks=[CommandHandler("cancel", cancel_recs)],
     )

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 import base64
-import io
 from pathlib import Path
 
 LOGO_PATH = Path(__file__).parent / "assets" / "vivica_logo.png"
@@ -17,11 +16,9 @@ def _logo_b64() -> str:
 
 def build_html(
     style1: str,
-    photo_url1: str,
-    product_url1: str,
+    photo_b64_1: str,
     style2: str,
-    photo_url2: str,
-    product_url2: str,
+    photo_b64_2: str,
 ) -> str:
     logo_b64 = _logo_b64()
     logo_tag = (
@@ -34,7 +31,6 @@ def build_html(
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
@@ -51,7 +47,6 @@ def build_html(
     width: 360px;
     height: 480px;
     background: #ffecd7;
-    border-radius: 16px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -98,7 +93,7 @@ def build_html(
     display: block;
   }}
   .product-info {{
-    padding: 10px 10px 12px;
+    padding: 10px 10px 14px;
     flex-shrink: 0;
   }}
   .product-label {{
@@ -115,21 +110,6 @@ def build_html(
     font-weight: 400;
     color: #890f1e;
     line-height: 1.3;
-    margin-bottom: 9px;
-  }}
-  .btn {{
-    display: block;
-    background: #890f1e;
-    color: #ffecd7;
-    border-radius: 8px;
-    padding: 8px 0;
-    text-align: center;
-    font-family: 'NT Somic', sans-serif;
-    font-size: 10px;
-    font-weight: 500;
-    text-decoration: none;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
   }}
   .logo-footer {{
     flex: 1;
@@ -159,22 +139,20 @@ def build_html(
   <div class="products">
     <div class="product">
       <div class="product-photo">
-        <img src="{photo_url1}" alt=""/>
+        <img src="data:image/jpeg;base64,{photo_b64_1}" alt=""/>
       </div>
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
         <p class="product-name">с трусиками {style1}</p>
-        <a class="btn" href="{product_url1}">Перейти →</a>
       </div>
     </div>
     <div class="product">
       <div class="product-photo">
-        <img src="{photo_url2}" alt=""/>
+        <img src="data:image/jpeg;base64,{photo_b64_2}" alt=""/>
       </div>
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
         <p class="product-name">с трусиками {style2}</p>
-        <a class="btn" href="{product_url2}">Перейти →</a>
       </div>
     </div>
   </div>
@@ -203,7 +181,6 @@ def render_card(html: str, scale: int = 2) -> bytes:
         )
         browser.close()
 
-    # Конвертируем в JPEG для Telegram
     from PIL import Image
     import io as _io
     img = Image.open(_io.BytesIO(png_bytes))
