@@ -31,6 +31,8 @@ def build_html(
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
@@ -41,7 +43,7 @@ def build_html(
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'NT Somic', sans-serif;
+    font-family: 'Montserrat', sans-serif;
   }}
   .card {{
     width: 360px;
@@ -58,7 +60,7 @@ def build_html(
     flex-shrink: 0;
   }}
   .header h1 {{
-    font-family: 'NT Somic', sans-serif;
+    font-family: 'Montserrat', sans-serif;
     font-weight: 400;
     font-size: 16px;
     color: #890f1e;
@@ -97,7 +99,7 @@ def build_html(
     flex-shrink: 0;
   }}
   .product-label {{
-    font-family: 'NT Somic', sans-serif;
+    font-family: 'Montserrat', sans-serif;
     font-size: 9px;
     color: #b09070;
     margin-bottom: 3px;
@@ -105,7 +107,7 @@ def build_html(
     letter-spacing: 0.8px;
   }}
   .product-name {{
-    font-family: 'NT Somic', sans-serif;
+    font-family: 'Montserrat', sans-serif;
     font-size: 12px;
     font-weight: 400;
     color: #890f1e;
@@ -119,7 +121,7 @@ def build_html(
     border-radius: 8px;
     padding: 8px 0;
     text-align: center;
-    font-family: 'NT Somic', sans-serif;
+    font-family: 'Montserrat', sans-serif;
     font-size: 10px;
     font-weight: 500;
     text-decoration: none;
