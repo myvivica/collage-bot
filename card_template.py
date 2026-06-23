@@ -61,7 +61,7 @@ def build_html(
   }}
   .header h1 {{
     font-family: 'Montserrat', sans-serif;
-    font-weight: 400;
+    font-weight: 600;
     font-size: 16px;
     color: #890f1e;
     line-height: 1.3;
@@ -109,7 +109,7 @@ def build_html(
   .product-name {{
     font-family: 'Montserrat', sans-serif;
     font-size: 10px;
-    font-weight: 400;
+    font-weight: 600;
     color: #890f1e;
     line-height: 1.3;
     margin-bottom: 9px;
@@ -161,7 +161,7 @@ def build_html(
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
         <p class="product-name">с трусиками {style1.lower()}</p>
-        <a class="btn">Перейти →</a>
+        <a class="btn">Перейти <span style="font-size:15px;line-height:1">→</span></a>
       </div>
     </div>
     <div class="product">
@@ -171,7 +171,7 @@ def build_html(
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
         <p class="product-name">с трусиками {style2.lower()}</p>
-        <a class="btn">Перейти →</a>
+        <a class="btn">Перейти <span style="font-size:15px;line-height:1">→</span></a>
       </div>
     </div>
   </div>
