@@ -59,8 +59,16 @@ def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: st
 async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👙 *Vivica — карточка рекомендаций*\n\n"
-        "Команда /recs — создать карточку\n"
-        "/cancel — отменить",
+        "Создаёт карточку с двумя фасонами трусиков для публикации.\n\n"
+        "*Как использовать:*\n"
+        "1. Отправь /recs\n"
+        "2. Загрузи фото левой карточки\n"
+        "3. Выбери фасон из списка\n"
+        "4. Загрузи фото правой карточки\n"
+        "5. Выбери фасон из списка\n"
+        "6. Получи готовую карточку\n\n"
+        "/recs — начать\n"
+        "/cancel — отменить в любой момент",
         parse_mode="Markdown",
     )
 
