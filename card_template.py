@@ -161,7 +161,7 @@ def build_html(
       </div>
       <div class="product-info">
         <p class="product-label">Комплект белья</p>
-        <p class="product-name">с трусиками {style1.lower()}</p>
+        <p class="product-name">с трусиками<br>{style1.lower()}</p>
         <a class="btn">Перейти <span style="font-size:15px;line-height:1">→</span></a>
       </div>
     </div>
