@@ -61,7 +61,7 @@ def build_html(
   }}
   .header h1 {{
     font-family: 'Montserrat', sans-serif;
-    font-weight: 600;
+    font-weight: 500;
     font-size: 16px;
     color: #890f1e;
     line-height: 1.3;
@@ -109,7 +109,7 @@ def build_html(
   .product-name {{
     font-family: 'Montserrat', sans-serif;
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
     color: #890f1e;
     line-height: 1.3;
     margin-bottom: 9px;
