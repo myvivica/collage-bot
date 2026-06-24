@@ -30,11 +30,12 @@ BOT_TOKEN = os.environ["BOT_TOKEN"]
 BASE_DIR = Path(__file__).parent
 PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
 
-# ── /recs ─────────────────────────────────────────────────────────────────────
+# ── states ────────────────────────────────────────────────────────────────────
 
-PHOTO1, STYLE1, PHOTO2, STYLE2 = range(4)
+MAIN_ARTICLE, ARTICLE1, ARTICLE2, PHOTO1, STYLE1, PHOTO2, STYLE2 = range(7)
 
 PHOTO_FILTER = (filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND
+TEXT_FILTER = filters.TEXT & ~filters.COMMAND
 
 STYLES = ["Танга", "Бразильяна", "Стринги"]
 STYLE_KB = ReplyKeyboardMarkup([[s] for s in STYLES], one_time_keyboard=True, resize_keyboard=True)
@@ -74,17 +75,17 @@ def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: st
     return render_card(html)
 
 
+# ── handlers ──────────────────────────────────────────────────────────────────
+
 async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "👙 *Vivica — карточка рекомендаций*\n\n"
         "Создаёт карточку с двумя фасонами трусиков для публикации.\n\n"
         "*Как использовать:*\n"
         "1. Отправь /recs\n"
-        "2. Загрузи фото левой карточки\n"
-        "3. Выбери фасон из списка\n"
-        "4. Загрузи фото правой карточки\n"
-        "5. Выбери фасон из списка\n"
-        "6. Получи готовую карточку\n\n"
+        "2. Введи артикулы (основной + два для слайда)\n"
+        "3. Загрузи фото и выбери фасон для каждой карточки\n"
+        "4. Получи готовый файл\n\n"
         "/recs — начать\n"
         "/cancel — отменить в любой момент",
         parse_mode="Markdown",
@@ -94,9 +95,39 @@ async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_recs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     await update.message.reply_text(
-        "Шаг 1/4 — загрузи фото для *левой* карточки:",
+        "Введи основной артикул\n_(товар, в который добавляем этот слайд)_",
         parse_mode="Markdown",
     )
+    return MAIN_ARTICLE
+
+
+async def got_main_article(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    article = (update.message.text or "").strip()
+    if not article:
+        await update.message.reply_text("⚠️ Введи артикул")
+        return MAIN_ARTICLE
+    context.user_data["main_article"] = article
+    await update.message.reply_text("Артикул *левой* карточки:", parse_mode="Markdown")
+    return ARTICLE1
+
+
+async def got_article1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    article = (update.message.text or "").strip()
+    if not article:
+        await update.message.reply_text("⚠️ Введи артикул")
+        return ARTICLE1
+    context.user_data["article1"] = article
+    await update.message.reply_text("Артикул *правой* карточки:", parse_mode="Markdown")
+    return ARTICLE2
+
+
+async def got_article2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    article = (update.message.text or "").strip()
+    if not article:
+        await update.message.reply_text("⚠️ Введи артикул")
+        return ARTICLE2
+    context.user_data["article2"] = article
+    await update.message.reply_text("Загрузи фото для *левой* карточки:", parse_mode="Markdown")
     return PHOTO1
 
 
@@ -107,7 +138,7 @@ async def got_photo1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return PHOTO1
     context.user_data["fid1"] = file_id
     await update.message.reply_text(
-        "Шаг 2/4 — выбери фасон для *левой* карточки:",
+        "Фасон *левой* карточки:",
         parse_mode="Markdown",
         reply_markup=STYLE_KB,
     )
@@ -121,7 +152,7 @@ async def got_style1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return STYLE1
     context.user_data["style1"] = style
     await update.message.reply_text(
-        f"✅ Левая: *{style}*\n\nШаг 3/4 — загрузи фото для *правой* карточки:",
+        f"✅ Левая: *{style}*\n\nЗагрузи фото для *правой* карточки:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -135,7 +166,7 @@ async def got_photo2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return PHOTO2
     context.user_data["fid2"] = file_id
     await update.message.reply_text(
-        "Шаг 4/4 — выбери фасон для *правой* карточки:",
+        "Фасон *правой* карточки:",
         parse_mode="Markdown",
         reply_markup=STYLE_KB,
     )
@@ -151,6 +182,9 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     fid1 = context.user_data.get("fid1")
     fid2 = context.user_data.get("fid2")
     style1 = context.user_data.get("style1")
+    main_article = context.user_data.get("main_article", "0")
+    article1 = context.user_data.get("article1", "0")
+    article2 = context.user_data.get("article2", "0")
 
     if not fid1 or not fid2 or not style1:
         await update.message.reply_text(
@@ -187,10 +221,11 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text("❌ Ошибка генерации. Попробуй ещё раз.")
         return ConversationHandler.END
 
+    filename = f"{main_article}_{article1}_{article2}.png"
     await update.message.reply_document(
         document=io.BytesIO(card_bytes),
-        filename="recs.png",
-        caption=f"{style1} · {style}",
+        filename=filename,
+        caption=f"{main_article} | {article1} · {article2}",
     )
     return ConversationHandler.END
 
@@ -201,11 +236,7 @@ async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def stray_photo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    """Фото вне диалога — бот перезапустился и потерял состояние."""
-    await update.message.reply_text(
-        "Начни заново — /recs",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    await update.message.reply_text("Начни заново — /recs", reply_markup=ReplyKeyboardRemove())
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -224,10 +255,13 @@ def main() -> None:
     recs_handler = ConversationHandler(
         entry_points=[CommandHandler("recs", cmd_recs)],
         states={
-            PHOTO1: [MessageHandler(PHOTO_FILTER, got_photo1)],
-            STYLE1: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_style1)],
-            PHOTO2: [MessageHandler(PHOTO_FILTER, got_photo2)],
-            STYLE2: [MessageHandler(filters.TEXT & ~filters.COMMAND, got_style2)],
+            MAIN_ARTICLE: [MessageHandler(TEXT_FILTER, got_main_article)],
+            ARTICLE1:     [MessageHandler(TEXT_FILTER, got_article1)],
+            ARTICLE2:     [MessageHandler(TEXT_FILTER, got_article2)],
+            PHOTO1:       [MessageHandler(PHOTO_FILTER, got_photo1)],
+            STYLE1:       [MessageHandler(TEXT_FILTER, got_style1)],
+            PHOTO2:       [MessageHandler(PHOTO_FILTER, got_photo2)],
+            STYLE2:       [MessageHandler(TEXT_FILTER, got_style2)],
         },
         fallbacks=[CommandHandler("cancel", cancel_recs)],
         persistent=True,
