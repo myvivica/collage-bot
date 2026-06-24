@@ -32,7 +32,7 @@ PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
 
 # ── states ────────────────────────────────────────────────────────────────────
 
-MAIN_ARTICLE, ARTICLE1, ARTICLE2, PHOTO1, STYLE1, PHOTO2, STYLE2 = range(7)
+MAIN_ARTICLE, ARTICLE1, PHOTO1, STYLE1, ARTICLE2, PHOTO2, STYLE2 = range(7)
 
 PHOTO_FILTER = (filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND
 TEXT_FILTER = filters.TEXT & ~filters.COMMAND
@@ -117,16 +117,6 @@ async def got_article1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("⚠️ Введи артикул")
         return ARTICLE1
     context.user_data["article1"] = article
-    await update.message.reply_text("Артикул *правой* карточки:", parse_mode="Markdown")
-    return ARTICLE2
-
-
-async def got_article2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    article = (update.message.text or "").strip()
-    if not article:
-        await update.message.reply_text("⚠️ Введи артикул")
-        return ARTICLE2
-    context.user_data["article2"] = article
     await update.message.reply_text("Загрузи фото для *левой* карточки:", parse_mode="Markdown")
     return PHOTO1
 
@@ -152,10 +142,20 @@ async def got_style1(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return STYLE1
     context.user_data["style1"] = style
     await update.message.reply_text(
-        f"✅ Левая: *{style}*\n\nЗагрузи фото для *правой* карточки:",
+        f"✅ Левая: *{style}*\n\nАртикул *правой* карточки:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
     )
+    return ARTICLE2
+
+
+async def got_article2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    article = (update.message.text or "").strip()
+    if not article:
+        await update.message.reply_text("⚠️ Введи артикул")
+        return ARTICLE2
+    context.user_data["article2"] = article
+    await update.message.reply_text("Загрузи фото для *правой* карточки:", parse_mode="Markdown")
     return PHOTO2
 
 
@@ -257,9 +257,9 @@ def main() -> None:
         states={
             MAIN_ARTICLE: [MessageHandler(TEXT_FILTER, got_main_article)],
             ARTICLE1:     [MessageHandler(TEXT_FILTER, got_article1)],
-            ARTICLE2:     [MessageHandler(TEXT_FILTER, got_article2)],
             PHOTO1:       [MessageHandler(PHOTO_FILTER, got_photo1)],
             STYLE1:       [MessageHandler(TEXT_FILTER, got_style1)],
+            ARTICLE2:     [MessageHandler(TEXT_FILTER, got_article2)],
             PHOTO2:       [MessageHandler(PHOTO_FILTER, got_photo2)],
             STYLE2:       [MessageHandler(TEXT_FILTER, got_style2)],
         },
