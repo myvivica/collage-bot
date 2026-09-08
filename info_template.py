@@ -50,7 +50,7 @@ def build_html(
 ) -> str:
     """focus — горизонтальное положение кадра основного фото, 0..100 %."""
     if text_color is None:
-        text_color = "#ffffff" if _luma(bg) < 205 else "#3a3a3a"
+        text_color = "#ffffff" if _luma(bg) < 205 else "#4a4a4a"
     # мягкая тень — текст частично лежит поверх фото
     shadow = "rgba(0,0,0,0.28)" if text_color == "#ffffff" else "rgba(255,255,255,0.6)"
 
