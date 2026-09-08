@@ -14,6 +14,13 @@ from typing import Sequence
 from PIL import Image
 
 W, H = 450, 600  # базовый viewport, рендерится со scale → 1350x1800
+SCALE = 3
+
+# Геометрия круглых врезок — в пикселях ИТОГОВОГО изображения (1350x1800).
+INSET_SIZE_PX = 510    # диаметр круга
+INSET_GAP_PX = 42      # зазор между кругами по вертикали
+INSET_AXIS_PX = 312    # X центра общей вертикальной оси, от левого края
+INSET_BOTTOM_PX = 156  # отступ нижнего круга от низа
 
 
 def bg_color_from_photo(data: bytes) -> str:
@@ -48,17 +55,16 @@ def build_html(
 
     bullets_html = "\n".join(f"<p>{b}</p>" for b in bullets if b.strip())
 
-    # 1 врезка — по центру левой колонки; 2 — со сдвигом друг под другом
-    if len(insets_b64) == 1:
-        positions = [("6%", "50%")]
-    else:
-        positions = [("8%", "36%"), ("2%", "63%")]
-
     insets_html = "\n".join(
-        f'<div class="inset" style="left:{left};top:{top}">'
-        f'<img src="data:image/jpeg;base64,{b64}" alt=""/></div>'
-        for b64, (left, top) in zip(insets_b64, positions)
+        f'<div class="inset"><img src="data:image/jpeg;base64,{b64}" alt=""/></div>'
+        for b64 in insets_b64
     )
+
+    size = INSET_SIZE_PX / SCALE
+    gap = INSET_GAP_PX / SCALE
+    axis = INSET_AXIS_PX / SCALE
+    bottom = INSET_BOTTOM_PX / SCALE
+    # одна врезка встаёт на место нижней из пары — ось и низ те же
 
     return f"""<!DOCTYPE html>
 <html lang="ru">
@@ -105,14 +111,24 @@ def build_html(
     white-space: nowrap;
     text-shadow: 0 1px 4px {shadow};
   }}
-  .inset {{
+  .insets {{
     position: absolute;
-    width: 42%;
-    aspect-ratio: 1 / 1;
+    left: {axis}px;
+    bottom: {bottom}px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: {gap}px;
+    z-index: 4;
+  }}
+  .inset {{
+    width: {size}px;
+    height: {size}px;
     border-radius: 50%;
     overflow: hidden;
-    z-index: 4;
     background: #ffffff;
+    flex-shrink: 0;
   }}
   .inset img {{
     width: 100%; height: 100%;
@@ -127,7 +143,9 @@ def build_html(
   <div class="bullets">
 {bullets_html}
   </div>
+  <div class="insets">
 {insets_html}
+  </div>
 </div>
 </body>
 </html>"""
