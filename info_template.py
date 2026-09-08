@@ -18,7 +18,8 @@ SCALE = 3
 
 # Геометрия круглых врезок — в пикселях ИТОГОВОГО изображения (1350x1800).
 INSET_SIZE_PX = 510    # диаметр круга
-INSET_GAP_PX = 42      # зазор между кругами по вертикали
+GAP_PX = 42            # единый вертикальный ритм: и между кругами, и между строками текста
+INSET_GAP_PX = GAP_PX  # зазор между кругами по вертикали
 INSET_AXIS_PX = 312    # X центра общей вертикальной оси, от левого края
 INSET_BOTTOM_PX = 156  # отступ нижнего круга от низа
 
@@ -101,13 +102,17 @@ def build_html(
     width: 68%;
     z-index: 3;
   }}
+  .bullets {{
+    display: flex;
+    flex-direction: column;
+    gap: {gap}px;
+  }}
   .bullets p {{
     font-weight: 400;
     font-size: 18px;
     line-height: 1.35;
     letter-spacing: 0.2px;
     color: {text_color};
-    margin-bottom: 26px;
     white-space: nowrap;
     text-shadow: 0 1px 4px {shadow};
   }}

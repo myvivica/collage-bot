@@ -7,12 +7,15 @@ import base64
 import io
 import logging
 import os
+import re
 from pathlib import Path
 
 from PIL import Image
 import card_template
 import info_template
+import text_templates
 from telegram import (
+    BotCommand,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReplyKeyboardMarkup,
@@ -42,12 +45,27 @@ PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
 
 MAIN_ARTICLE, ARTICLE1, PHOTO1, STYLE1, ARTICLE2, PHOTO2, STYLE2 = range(7)
 INFO_ARTICLE, INFO_HERO, INFO_INSETS, INFO_TEXT = range(10, 14)
+INFO_TEXT_CUSTOM, INFO_TPL_NAME = range(14, 16)
 
 PHOTO_FILTER = (filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND
-TEXT_FILTER = filters.TEXT & ~filters.COMMAND
 
 STYLES = ["Танга", "Бразильяна", "Стринги"]
 STYLE_KB = ReplyKeyboardMarkup([[s] for s in STYLES], one_time_keyboard=True, resize_keyboard=True)
+
+BTN_INFO = "🖼 Инфографика"
+BTN_RECS = "👙 Карточка рекомендаций"
+BTN_CANCEL = "✖️ Отмена"
+
+MAIN_KB = ReplyKeyboardMarkup(
+    [[BTN_INFO], [BTN_RECS]], resize_keyboard=True, is_persistent=True
+)
+CANCEL_KB = ReplyKeyboardMarkup([[BTN_CANCEL]], resize_keyboard=True, is_persistent=True)
+
+# кнопки главного меню не должны попадать в текстовые поля диалогов
+MENU_FILTER = filters.Regex(
+    "^(" + "|".join(re.escape(b) for b in (BTN_INFO, BTN_RECS, BTN_CANCEL)) + ")$"
+)
+TEXT_FILTER = filters.TEXT & ~filters.COMMAND & ~MENU_FILTER
 
 
 def _get_file_id(msg) -> str | None:
@@ -90,17 +108,12 @@ def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: st
 
 async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
-        "👙 *Vivica — карточка рекомендаций*\n\n"
-        "Создаёт карточку с двумя фасонами трусиков для публикации.\n\n"
-        "*Как использовать:*\n"
-        "1. Отправь /recs\n"
-        "2. Введи артикулы (основной + два для слайда)\n"
-        "3. Загрузи фото и выбери фасон для каждой карточки\n"
-        "4. Получи готовый файл\n\n"
-        "/recs — карточка рекомендаций (два фасона)\n"
-        "/info — инфографика: фото + буллеты + круглые врезки\n"
-        "/cancel — отменить в любой момент",
+        "👙 *Vivica — генератор карточек*\n\n"
+        f"*{BTN_INFO}* — фото модели + текстовые буллеты + круглые врезки\n"
+        f"*{BTN_RECS}* — слайд с двумя фасонами\n\n"
+        "Выбери кнопку внизу.",
         parse_mode="Markdown",
+        reply_markup=MAIN_KB,
     )
 
 
@@ -262,6 +275,33 @@ def make_info_card(
     return info_template.render_card(html)
 
 
+BTN_TPL_CUSTOM = "✏️ Разовый текст"
+BTN_TPL_NEW = "➕ Новый шаблон"
+
+
+def _templates_kb(context: ContextTypes.DEFAULT_TYPE) -> ReplyKeyboardMarkup:
+    names = list(text_templates.all_templates(context.bot_data))
+    rows = [[n] for n in names] + [[BTN_TPL_CUSTOM], [BTN_TPL_NEW], [BTN_CANCEL]]
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=True)
+
+
+def _templates_preview(context: ContextTypes.DEFAULT_TYPE) -> str:
+    tpls = text_templates.all_templates(context.bot_data)
+    return "\n\n".join(
+        "*{}*\n{}".format(name, "\n".join("· " + ln for ln in lines))
+        for name, lines in tpls.items()
+    )
+
+
+async def _ask_template(message, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await message.reply_text(
+        "Текст — выбери шаблон:\n\n" + _templates_preview(context),
+        parse_mode="Markdown",
+        reply_markup=_templates_kb(context),
+    )
+    return INFO_TEXT
+
+
 async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     await update.message.reply_text(
@@ -305,12 +345,8 @@ async def info_inset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     insets = context.user_data.setdefault("info_insets", [])
     insets.append(file_id)
     if len(insets) >= 2:
-        await update.message.reply_text(
-            "✅ Две врезки приняты.\n\n"
-            "Теперь текст — до 3 строк, каждая с новой строки:",
-            reply_markup=ReplyKeyboardRemove(),
-        )
-        return INFO_TEXT
+        await update.message.reply_text("✅ Две врезки приняты.", reply_markup=ReplyKeyboardRemove())
+        return await _ask_template(update.message, context)
     await update.message.reply_text(
         f"✅ Принято ({len(insets)}/2). Ещё одно фото или «Готово».",
         reply_markup=INFO_DONE_KB,
@@ -322,10 +358,7 @@ async def info_insets_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if not context.user_data.get("info_insets"):
         await update.message.reply_text("⚠️ Нужна хотя бы одна врезка.", reply_markup=INFO_DONE_KB)
         return INFO_INSETS
-    await update.message.reply_text(
-        "Текст — до 3 строк, каждая с новой строки:", reply_markup=ReplyKeyboardRemove()
-    )
-    return INFO_TEXT
+    return await _ask_template(update.message, context)
 
 
 def _focus_kb(focus: int) -> InlineKeyboardMarkup:
@@ -376,18 +409,61 @@ async def _send_info_card(message, context, focus: int) -> None:
 
 
 async def info_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Выбор шаблона текста (или переход к ручному вводу)."""
+    choice = (update.message.text or "").strip()
+
+    if choice in (BTN_TPL_CUSTOM, BTN_TPL_NEW):
+        context.user_data["info_save_tpl"] = choice == BTN_TPL_NEW
+        await update.message.reply_text(
+            "Строки текста — до 3, каждая с новой строки:",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return INFO_TEXT_CUSTOM
+
+    tpls = text_templates.all_templates(context.bot_data)
+    if choice not in tpls:
+        await update.message.reply_text(
+            "⚠️ Выбери шаблон кнопкой", reply_markup=_templates_kb(context)
+        )
+        return INFO_TEXT
+
+    context.user_data["info_bullets"] = tpls[choice]
+    return await _generate_info(update.message, context)
+
+
+async def info_text_custom(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     lines = [ln.strip() for ln in (update.message.text or "").split("\n") if ln.strip()][:3]
     if not lines:
         await update.message.reply_text("⚠️ Введи хотя бы одну строку текста")
-        return INFO_TEXT
+        return INFO_TEXT_CUSTOM
     context.user_data["info_bullets"] = lines
 
+    if context.user_data.pop("info_save_tpl", False):
+        await update.message.reply_text("Название шаблона:")
+        return INFO_TPL_NAME
+
+    return await _generate_info(update.message, context)
+
+
+async def info_tpl_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    name = (update.message.text or "").strip()[:40]
+    if not name:
+        await update.message.reply_text("⚠️ Введи название")
+        return INFO_TPL_NAME
+    text_templates.save_template(
+        context.bot_data, name, context.user_data.get("info_bullets", [])
+    )
+    await update.message.reply_text(f"✅ Шаблон «{name}» сохранён")
+    return await _generate_info(update.message, context)
+
+
+async def _generate_info(message, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not context.user_data.get("info_hero"):
-        await update.message.reply_text("⚠️ Данные сессии потеряны. Начни заново — /info")
+        await message.reply_text("⚠️ Данные сессии потеряны. Начни заново.", reply_markup=MAIN_KB)
         return ConversationHandler.END
 
-    await update.message.reply_text("⏳ Генерирую…")
-    await _send_info_card(update.message, context, focus=50)
+    await message.reply_text("⏳ Генерирую…", reply_markup=MAIN_KB)
+    await _send_info_card(message, context, focus=50)
     return ConversationHandler.END
 
 
@@ -404,30 +480,77 @@ async def info_focus_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _send_info_card(query.message, context, focus=int(payload))
 
 
+async def menu_interrupt(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "Текущий диалог прерван. Нажми кнопку ещё раз.", reply_markup=MAIN_KB
+    )
+    return ConversationHandler.END
+
+
 async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Отменено.", reply_markup=MAIN_KB)
     return ConversationHandler.END
 
 
 async def stray_photo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Начни заново — /recs", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Выбери, что делаем:", reply_markup=MAIN_KB)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Необработанная ошибка: %s", context.error, exc_info=context.error)
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text(
-            "❌ Что-то пошло не так. Начни заново — /recs",
-            reply_markup=ReplyKeyboardRemove(),
+            "❌ Что-то пошло не так. Начни заново.",
+            reply_markup=MAIN_KB,
         )
 
 
-def main() -> None:
+async def post_init(app: Application) -> None:
+    await app.bot.set_my_commands(
+        [
+            BotCommand("info", "Инфографика: фото + буллеты + врезки"),
+            BotCommand("recs", "Карточка рекомендаций (два фасона)"),
+            BotCommand("templates", "Шаблоны текста"),
+            BotCommand("cancel", "Отменить"),
+        ]
+    )
+
+
+async def cmd_templates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Шаблоны текста:\n\n" + _templates_preview(context) +
+        "\n\nУдалить: /deltpl Название",
+        parse_mode="Markdown",
+        reply_markup=MAIN_KB,
+    )
+
+
+async def cmd_deltpl(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    name = " ".join(context.args).strip()
+    if not name:
+        await update.message.reply_text("Укажи название: /deltpl Название")
+        return
+    ok = text_templates.delete_template(context.bot_data, name)
+    await update.message.reply_text(
+        f"✅ «{name}» удалён" if ok else f"⚠️ «{name}» не найден среди пользовательских"
+    )
+
+
+def build_app() -> Application:
     persistence = PicklePersistence(filepath=str(PERSISTENCE_PATH))
-    app = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .persistence(persistence)
+        .post_init(post_init)
+        .build()
+    )
 
     recs_handler = ConversationHandler(
-        entry_points=[CommandHandler("recs", cmd_recs)],
+        entry_points=[
+            CommandHandler("recs", cmd_recs),
+            MessageHandler(filters.Regex("^" + re.escape(BTN_RECS) + "$"), cmd_recs),
+        ],
         states={
             MAIN_ARTICLE: [MessageHandler(TEXT_FILTER, got_main_article)],
             ARTICLE1:     [MessageHandler(TEXT_FILTER, got_article1)],
@@ -437,13 +560,20 @@ def main() -> None:
             PHOTO2:       [MessageHandler(PHOTO_FILTER, got_photo2)],
             STYLE2:       [MessageHandler(TEXT_FILTER, got_style2)],
         },
-        fallbacks=[CommandHandler("cancel", cancel_recs)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_recs),
+            MessageHandler(filters.Regex("^" + re.escape(BTN_CANCEL) + "$"), cancel_recs),
+            MessageHandler(MENU_FILTER, menu_interrupt),
+        ],
         persistent=True,
         name="recs_conv",
     )
 
     info_handler = ConversationHandler(
-        entry_points=[CommandHandler("info", cmd_info)],
+        entry_points=[
+            CommandHandler("info", cmd_info),
+            MessageHandler(filters.Regex("^" + re.escape(BTN_INFO) + "$"), cmd_info),
+        ],
         states={
             INFO_ARTICLE: [MessageHandler(TEXT_FILTER, info_article)],
             INFO_HERO:    [MessageHandler(PHOTO_FILTER, info_hero)],
@@ -451,20 +581,36 @@ def main() -> None:
                 MessageHandler(PHOTO_FILTER, info_inset),
                 MessageHandler(filters.Regex("^Готово$"), info_insets_done),
             ],
-            INFO_TEXT:    [MessageHandler(TEXT_FILTER, info_text)],
+            INFO_TEXT:        [MessageHandler(TEXT_FILTER, info_text)],
+            INFO_TEXT_CUSTOM: [MessageHandler(TEXT_FILTER, info_text_custom)],
+            INFO_TPL_NAME:    [MessageHandler(TEXT_FILTER, info_tpl_name)],
         },
-        fallbacks=[CommandHandler("cancel", cancel_recs)],
+        fallbacks=[
+            CommandHandler("cancel", cancel_recs),
+            MessageHandler(filters.Regex("^" + re.escape(BTN_CANCEL) + "$"), cancel_recs),
+            MessageHandler(MENU_FILTER, menu_interrupt),
+        ],
         persistent=True,
         name="info_conv",
     )
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("templates", cmd_templates))
+    app.add_handler(CommandHandler("deltpl", cmd_deltpl))
     app.add_handler(recs_handler)
     app.add_handler(info_handler)
     app.add_handler(CallbackQueryHandler(info_focus_cb, pattern=r"^info_focus:"))
+    app.add_handler(
+        MessageHandler(filters.Regex("^" + re.escape(BTN_CANCEL) + "$"), cancel_recs)
+    )
     app.add_handler(MessageHandler(PHOTO_FILTER, stray_photo))
     app.add_error_handler(error_handler)
 
+    return app
+
+
+def main() -> None:
+    app = build_app()
     logger.info("Бот запущен…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
