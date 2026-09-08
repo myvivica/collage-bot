@@ -50,9 +50,9 @@ def build_html(
 ) -> str:
     """focus — горизонтальное положение кадра основного фото, 0..100 %."""
     if text_color is None:
-        text_color = "#ffffff" if _luma(bg) < 205 else "#4a4a4a"
+        text_color = "#ffffff" if _luma(bg) < 205 else "#3a3a3a"
     # мягкая тень — текст частично лежит поверх фото
-    shadow = "rgba(0,0,0,0.28)" if text_color == "#ffffff" else "rgba(255,255,255,0.55)"
+    shadow = "rgba(0,0,0,0.28)" if text_color == "#ffffff" else "rgba(255,255,255,0.6)"
 
     bullets_html = "\n".join(f"<p>{b}</p>" for b in bullets if b.strip())
 
@@ -72,7 +72,7 @@ def build_html(
 <head>
 <meta charset="UTF-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500&display=swap" rel="stylesheet">
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
@@ -108,7 +108,7 @@ def build_html(
     gap: {gap}px;
   }}
   .bullets p {{
-    font-weight: 400;
+    font-weight: 500;
     font-size: 18px;
     line-height: 1.35;
     letter-spacing: 0.2px;
