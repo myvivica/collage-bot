@@ -10,10 +10,18 @@ import os
 from pathlib import Path
 
 from PIL import Image
-from card_template import build_html, render_card
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+import card_template
+import info_template
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    Update,
+)
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ConversationHandler,
     ContextTypes,
@@ -33,6 +41,7 @@ PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
 # ── states ────────────────────────────────────────────────────────────────────
 
 MAIN_ARTICLE, ARTICLE1, PHOTO1, STYLE1, ARTICLE2, PHOTO2, STYLE2 = range(7)
+INFO_ARTICLE, INFO_HERO, INFO_INSETS, INFO_TEXT = range(10, 14)
 
 PHOTO_FILTER = (filters.Document.ALL | filters.PHOTO) & ~filters.COMMAND
 TEXT_FILTER = filters.TEXT & ~filters.COMMAND
@@ -71,8 +80,10 @@ def _resize(data: bytes, max_side: int = 1200) -> bytes:
 def make_recs_card(img1_bytes: bytes, style1: str, img2_bytes: bytes, style2: str) -> bytes:
     b64_1 = base64.b64encode(_resize(img1_bytes)).decode()
     b64_2 = base64.b64encode(_resize(img2_bytes)).decode()
-    html = build_html(style1=style1, photo_b64_1=b64_1, style2=style2, photo_b64_2=b64_2)
-    return render_card(html)
+    html = card_template.build_html(
+        style1=style1, photo_b64_1=b64_1, style2=style2, photo_b64_2=b64_2
+    )
+    return card_template.render_card(html)
 
 
 # ── handlers ──────────────────────────────────────────────────────────────────
@@ -86,7 +97,8 @@ async def cmd_start(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         "2. Введи артикулы (основной + два для слайда)\n"
         "3. Загрузи фото и выбери фасон для каждой карточки\n"
         "4. Получи готовый файл\n\n"
-        "/recs — начать\n"
+        "/recs — карточка рекомендаций (два фасона)\n"
+        "/info — инфографика: фото + буллеты + круглые врезки\n"
         "/cancel — отменить в любой момент",
         parse_mode="Markdown",
     )
@@ -230,6 +242,168 @@ async def got_style2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+# ── /info — инфографика «фото + буллеты + круглые врезки» ─────────────────────
+
+INFO_DONE_KB = ReplyKeyboardMarkup([["Готово"]], one_time_keyboard=True, resize_keyboard=True)
+
+
+def make_info_card(
+    hero_bytes: bytes, insets: list[bytes], bullets: list[str], focus: int = 50
+) -> bytes:
+    hero_resized = _resize(hero_bytes, 1400)
+    bg = info_template.bg_color_from_photo(hero_resized)
+    html = info_template.build_html(
+        photo_b64=base64.b64encode(hero_resized).decode(),
+        bullets=bullets,
+        insets_b64=[base64.b64encode(_resize(i, 800)).decode() for i in insets],
+        bg=bg,
+        focus=focus,
+    )
+    return info_template.render_card(html)
+
+
+async def cmd_info(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.clear()
+    await update.message.reply_text(
+        "Артикул _(для имени файла)_:", parse_mode="Markdown"
+    )
+    return INFO_ARTICLE
+
+
+async def info_article(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    article = (update.message.text or "").strip()
+    if not article:
+        await update.message.reply_text("⚠️ Введи артикул")
+        return INFO_ARTICLE
+    context.user_data["info_article"] = article
+    await update.message.reply_text(
+        "Основное фото _(вертикальное, модель)_:", parse_mode="Markdown"
+    )
+    return INFO_HERO
+
+
+async def info_hero(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    file_id = _get_file_id(update.message)
+    if file_id is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой.")
+        return INFO_HERO
+    context.user_data["info_hero"] = file_id
+    context.user_data["info_insets"] = []
+    await update.message.reply_text(
+        "Фото для круглых врезок — 1 или 2 штуки.\n"
+        "Отправь по одному, потом нажми «Готово».",
+        reply_markup=INFO_DONE_KB,
+    )
+    return INFO_INSETS
+
+
+async def info_inset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    file_id = _get_file_id(update.message)
+    if file_id is None:
+        await update.message.reply_text("⚠️ Отправь фото файлом или картинкой.")
+        return INFO_INSETS
+    insets = context.user_data.setdefault("info_insets", [])
+    insets.append(file_id)
+    if len(insets) >= 2:
+        await update.message.reply_text(
+            "✅ Две врезки приняты.\n\n"
+            "Теперь текст — до 3 строк, каждая с новой строки:",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return INFO_TEXT
+    await update.message.reply_text(
+        f"✅ Принято ({len(insets)}/2). Ещё одно фото или «Готово».",
+        reply_markup=INFO_DONE_KB,
+    )
+    return INFO_INSETS
+
+
+async def info_insets_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not context.user_data.get("info_insets"):
+        await update.message.reply_text("⚠️ Нужна хотя бы одна врезка.", reply_markup=INFO_DONE_KB)
+        return INFO_INSETS
+    await update.message.reply_text(
+        "Текст — до 3 строк, каждая с новой строки:", reply_markup=ReplyKeyboardRemove()
+    )
+    return INFO_TEXT
+
+
+def _focus_kb(focus: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton("◀︎ кадр", callback_data=f"info_focus:{max(0, focus - 15)}"),
+            InlineKeyboardButton(f"{focus}%", callback_data="info_focus:noop"),
+            InlineKeyboardButton("кадр ▶︎", callback_data=f"info_focus:{min(100, focus + 15)}"),
+        ]]
+    )
+
+
+async def _send_info_card(message, context, focus: int) -> None:
+    hero = await _download_file_id(context.user_data["info_hero"], context)
+    insets = []
+    for fid in context.user_data.get("info_insets", []):
+        data = await _download_file_id(fid, context)
+        if data is not None:
+            insets.append(data)
+
+    if hero is None or not insets:
+        await message.reply_text("❌ Не удалось скачать фото. Начни заново — /info")
+        return
+
+    bullets = context.user_data.get("info_bullets", [])
+    loop = asyncio.get_event_loop()
+    try:
+        png = await asyncio.wait_for(
+            loop.run_in_executor(None, make_info_card, hero, insets, bullets, focus),
+            timeout=90.0,
+        )
+    except asyncio.TimeoutError:
+        logger.error("Таймаут генерации инфографики")
+        await message.reply_text("❌ Генерация заняла слишком долго. Попробуй ещё раз — /info")
+        return
+    except Exception as e:
+        logger.error("Ошибка генерации инфографики: %s", e, exc_info=e)
+        await message.reply_text("❌ Ошибка генерации. Попробуй ещё раз — /info")
+        return
+
+    article = context.user_data.get("info_article", "info")
+    await message.reply_document(
+        document=io.BytesIO(png),
+        filename=f"{article}_info.png",
+        caption=f"{article} · кадр {focus}%",
+        reply_markup=_focus_kb(focus),
+    )
+
+
+async def info_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    lines = [ln.strip() for ln in (update.message.text or "").split("\n") if ln.strip()][:3]
+    if not lines:
+        await update.message.reply_text("⚠️ Введи хотя бы одну строку текста")
+        return INFO_TEXT
+    context.user_data["info_bullets"] = lines
+
+    if not context.user_data.get("info_hero"):
+        await update.message.reply_text("⚠️ Данные сессии потеряны. Начни заново — /info")
+        return ConversationHandler.END
+
+    await update.message.reply_text("⏳ Генерирую…")
+    await _send_info_card(update.message, context, focus=50)
+    return ConversationHandler.END
+
+
+async def info_focus_cb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    payload = query.data.split(":", 1)[1]
+    if payload == "noop":
+        await query.answer("Положение кадра основного фото")
+        return
+    if not context.user_data.get("info_hero"):
+        await query.answer("Сессия потеряна — /info", show_alert=True)
+        return
+    await query.answer("Пересобираю…")
+    await _send_info_card(query.message, context, focus=int(payload))
+
+
 async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
@@ -268,8 +442,26 @@ def main() -> None:
         name="recs_conv",
     )
 
+    info_handler = ConversationHandler(
+        entry_points=[CommandHandler("info", cmd_info)],
+        states={
+            INFO_ARTICLE: [MessageHandler(TEXT_FILTER, info_article)],
+            INFO_HERO:    [MessageHandler(PHOTO_FILTER, info_hero)],
+            INFO_INSETS:  [
+                MessageHandler(PHOTO_FILTER, info_inset),
+                MessageHandler(filters.Regex("^Готово$"), info_insets_done),
+            ],
+            INFO_TEXT:    [MessageHandler(TEXT_FILTER, info_text)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_recs)],
+        persistent=True,
+        name="info_conv",
+    )
+
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(recs_handler)
+    app.add_handler(info_handler)
+    app.add_handler(CallbackQueryHandler(info_focus_cb, pattern=r"^info_focus:"))
     app.add_handler(MessageHandler(PHOTO_FILTER, stray_photo))
     app.add_error_handler(error_handler)
 

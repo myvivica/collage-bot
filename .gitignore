@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.railway/
+.claude/
+bot_state.pkl
