@@ -18,19 +18,19 @@ SCALE = 3
 
 # Геометрия круглых врезок — в пикселях ИТОГОВОГО изображения (1350x1800).
 INSET_SIZE_PX = 510    # диаметр круга
-# Единый вертикальный зазор: между строками текста, между кругами
-# и между текстовым блоком и блоком кругов — одно и то же значение.
-GAP_PX = 94
+GAP_PX = 42            # единый вертикальный ритм: и между кругами, и между строками текста
+INSET_GAP_PX = GAP_PX  # зазор между кругами по вертикали
 INSET_AXIS_PX = 285    # X центра общей вертикальной оси, от левого края
 BULLETS_LEFT_PX = 48   # левый отступ текстового блока
-STACK_TOP_PX = 84      # верхний отступ всего стека (текст + круги)
+BULLETS_TOP_PX = 144   # верхний отступ текстового блока
+INSET_BOTTOM_PX = 210  # отступ нижнего круга от низа
 
 
 def bg_color_from_photo(data: bytes) -> str:
     """Средний цвет области под текстом — по нему выбирается цвет буллетов."""
     img = Image.open(io.BytesIO(data)).convert("RGB")
     w, h = img.size
-    area = img.crop((0, int(h * 0.08), int(w * 0.62), int(h * 0.36)))
+    area = img.crop((0, int(h * 0.06), int(w * 0.62), int(h * 0.34)))
     r, g, b = area.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
     return f"#{r:02x}{g:02x}{b:02x}"
 
@@ -50,14 +50,10 @@ def build_html(
     text_color: str | None = None,
     focus: int = 50,
 ) -> str:
-    """focus — горизонтальное положение кадра основного фото, 0..100 %.
-
-    Фото занимает весь кадр — подложка не дорисовывается, исходник должен
-    быть готовым вертикальным снимком 3:4 со свободным местом слева.
-    """
+    """focus — горизонтальное положение кадра основного фото, 0..100 %."""
     if text_color is None:
         text_color = "#ffffff" if _luma(bg) < 175 else "#4a4a4a"
-    # мягкая тень — текст лежит поверх фото
+    # мягкая тень — текст частично лежит поверх фото
     shadow = "rgba(0,0,0,0.28)" if text_color == "#ffffff" else "rgba(255,255,255,0.6)"
 
     bullets_html = "\n".join(f"<p>{b}</p>" for b in bullets if b.strip())
@@ -68,12 +64,11 @@ def build_html(
     )
 
     size = INSET_SIZE_PX / SCALE
-    gap = GAP_PX / SCALE
+    gap = INSET_GAP_PX / SCALE
+    axis = INSET_AXIS_PX / SCALE
+    bottom = INSET_BOTTOM_PX / SCALE
     bullets_left = BULLETS_LEFT_PX / SCALE
-    stack_top = STACK_TOP_PX / SCALE
-    # круги центрируются по своей оси внутри стека, привязанного к левому краю текста
-    insets_offset = (INSET_AXIS_PX - BULLETS_LEFT_PX - INSET_SIZE_PX / 2) / SCALE
-    bullets_width = W * 0.68
+    bullets_top = BULLETS_TOP_PX / SCALE
     # одна врезка встаёт на место нижней из пары — ось и низ те же
 
     return f"""<!DOCTYPE html>
@@ -104,37 +99,36 @@ def build_html(
     object-fit: cover; object-position: {focus}% center;
     display: block;
   }}
-  .stack {{
+  .bullets {{
     position: absolute;
-    left: {bullets_left}px;
-    top: {stack_top}px;
-    display: flex;
-    flex-direction: column;
-    gap: {gap}px;
+    left: {bullets_left}px; top: {bullets_top}px;
+    width: 68%;
     z-index: 3;
   }}
   .bullets {{
     display: flex;
     flex-direction: column;
     gap: {gap}px;
-    width: {bullets_width}px;
   }}
   .bullets p {{
     font-weight: 500;
     font-size: 18px;
-    line-height: 1;
+    line-height: 1.35;
     letter-spacing: 0.2px;
     color: {text_color};
     white-space: nowrap;
     text-shadow: 0 1px 4px {shadow};
   }}
   .insets {{
-    width: {size}px;
-    margin-left: {insets_offset}px;
+    position: absolute;
+    left: {axis}px;
+    bottom: {bottom}px;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: {gap}px;
+    z-index: 4;
   }}
   .inset {{
     width: {size}px;
@@ -154,13 +148,11 @@ def build_html(
 <body>
 <div class="card">
   <div class="hero"><img src="data:image/jpeg;base64,{photo_b64}" alt=""/></div>
-  <div class="stack">
-    <div class="bullets">
+  <div class="bullets">
 {bullets_html}
-    </div>
-    <div class="insets">
+  </div>
+  <div class="insets">
 {insets_html}
-    </div>
   </div>
 </div>
 </body>
