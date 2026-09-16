@@ -39,7 +39,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 
 BASE_DIR = Path(__file__).parent
-PERSISTENCE_PATH = BASE_DIR / "bot_state.pkl"
+# STATE_DIR — примонтированный том Railway: состояние диалогов переживает деплой
+STATE_DIR = Path(os.environ.get("STATE_DIR", BASE_DIR))
+PERSISTENCE_PATH = STATE_DIR / "bot_state.pkl"
 
 # ── states ────────────────────────────────────────────────────────────────────
 
@@ -492,8 +494,10 @@ async def cancel_recs(update: Update, _: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-async def stray_photo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Выбери, что делаем:", reply_markup=MAIN_KB)
+async def stray_message(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "Диалог не запущен — выбери, что делаем:", reply_markup=MAIN_KB
+    )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -603,7 +607,7 @@ def build_app() -> Application:
     app.add_handler(
         MessageHandler(filters.Regex("^" + re.escape(BTN_CANCEL) + "$"), cancel_recs)
     )
-    app.add_handler(MessageHandler(PHOTO_FILTER, stray_photo))
+    app.add_handler(MessageHandler(PHOTO_FILTER | TEXT_FILTER, stray_message))
     app.add_error_handler(error_handler)
 
     return app

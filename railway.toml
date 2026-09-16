@@ -5,4 +5,6 @@ dockerfilePath = "Dockerfile"
 [deploy]
 startCommand = "python main.py"
 restartPolicyType = "ON_FAILURE"
+# polling-бот: новый инстанс не должен пересекаться со старым (Conflict в getUpdates)
+overlapSeconds = 0
 restartPolicyMaxRetries = 5
