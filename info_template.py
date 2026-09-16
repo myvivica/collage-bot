@@ -18,12 +18,12 @@ SCALE = 3
 
 # Геометрия круглых врезок — в пикселях ИТОГОВОГО изображения (1350x1800).
 INSET_SIZE_PX = 510    # диаметр круга
-GAP_PX = 42            # единый вертикальный ритм: и между кругами, и между строками текста
-INSET_GAP_PX = GAP_PX  # зазор между кругами по вертикали
+# Единый вертикальный зазор: между строками текста, между кругами
+# и между текстовым блоком и блоком кругов — одно и то же значение.
+GAP_PX = 94
 INSET_AXIS_PX = 285    # X центра общей вертикальной оси, от левого края
 BULLETS_LEFT_PX = 48   # левый отступ текстового блока
-BULLETS_TOP_PX = 84    # верхний отступ текстового блока (было 198 — на строку ниже)
-INSET_BOTTOM_PX = 270  # отступ нижнего круга от низа
+STACK_TOP_PX = 84      # верхний отступ всего стека (текст + круги)
 
 
 def bg_color_from_photo(data: bytes) -> str:
@@ -68,11 +68,12 @@ def build_html(
     )
 
     size = INSET_SIZE_PX / SCALE
-    gap = INSET_GAP_PX / SCALE
-    axis = INSET_AXIS_PX / SCALE
-    bottom = INSET_BOTTOM_PX / SCALE
+    gap = GAP_PX / SCALE
     bullets_left = BULLETS_LEFT_PX / SCALE
-    bullets_top = BULLETS_TOP_PX / SCALE
+    stack_top = STACK_TOP_PX / SCALE
+    # круги центрируются по своей оси внутри стека, привязанного к левому краю текста
+    insets_offset = (INSET_AXIS_PX - BULLETS_LEFT_PX - INSET_SIZE_PX / 2) / SCALE
+    bullets_width = W * 0.68
     # одна врезка встаёт на место нижней из пары — ось и низ те же
 
     return f"""<!DOCTYPE html>
@@ -103,36 +104,37 @@ def build_html(
     object-fit: cover; object-position: {focus}% center;
     display: block;
   }}
-  .bullets {{
+  .stack {{
     position: absolute;
-    left: {bullets_left}px; top: {bullets_top}px;
-    width: 68%;
+    left: {bullets_left}px;
+    top: {stack_top}px;
+    display: flex;
+    flex-direction: column;
+    gap: {gap}px;
     z-index: 3;
   }}
   .bullets {{
     display: flex;
     flex-direction: column;
     gap: {gap}px;
+    width: {bullets_width}px;
   }}
   .bullets p {{
     font-weight: 500;
     font-size: 18px;
-    line-height: 1.35;
+    line-height: 1;
     letter-spacing: 0.2px;
     color: {text_color};
     white-space: nowrap;
     text-shadow: 0 1px 4px {shadow};
   }}
   .insets {{
-    position: absolute;
-    left: {axis}px;
-    bottom: {bottom}px;
-    transform: translateX(-50%);
+    width: {size}px;
+    margin-left: {insets_offset}px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: {gap}px;
-    z-index: 4;
   }}
   .inset {{
     width: {size}px;
@@ -152,11 +154,13 @@ def build_html(
 <body>
 <div class="card">
   <div class="hero"><img src="data:image/jpeg;base64,{photo_b64}" alt=""/></div>
-  <div class="bullets">
+  <div class="stack">
+    <div class="bullets">
 {bullets_html}
-  </div>
-  <div class="insets">
+    </div>
+    <div class="insets">
 {insets_html}
+    </div>
   </div>
 </div>
 </body>
