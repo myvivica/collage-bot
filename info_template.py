@@ -18,12 +18,12 @@ SCALE = 3
 
 # Геометрия круглых врезок — в пикселях ИТОГОВОГО изображения (1350x1800).
 INSET_SIZE_PX = 510    # диаметр круга
-GAP_PX = 42            # единый вертикальный ритм: и между кругами, и между строками текста
-INSET_GAP_PX = GAP_PX  # зазор между кругами по вертикали
+GAP_PX = 42            # margin между строками текста (визуальный зазор глифов выходит ~68)
+INSET_GAP_PX = 68      # зазор между кругами = визуальному зазору между строками
 INSET_AXIS_PX = 285    # X центра общей вертикальной оси, от левого края
 BULLETS_LEFT_PX = 48   # левый отступ текстового блока
 BULLETS_TOP_PX = 144   # верхний отступ текстового блока
-INSET_BOTTOM_PX = 210  # отступ нижнего круга от низа
+INSET_BOTTOM_PX = 184  # отступ нижнего круга от низа (верх верхнего круга не двигается)
 
 
 def bg_color_from_photo(data: bytes) -> str:
@@ -64,7 +64,8 @@ def build_html(
     )
 
     size = INSET_SIZE_PX / SCALE
-    gap = INSET_GAP_PX / SCALE
+    gap = GAP_PX / SCALE
+    inset_gap = INSET_GAP_PX / SCALE
     axis = INSET_AXIS_PX / SCALE
     bottom = INSET_BOTTOM_PX / SCALE
     bullets_left = BULLETS_LEFT_PX / SCALE
@@ -127,7 +128,7 @@ def build_html(
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: {gap}px;
+    gap: {inset_gap}px;
     z-index: 4;
   }}
   .inset {{
