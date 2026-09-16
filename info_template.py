@@ -26,11 +26,11 @@ INSET_BOTTOM_PX = 156  # отступ нижнего круга от низа
 
 
 def bg_color_from_photo(data: bytes) -> str:
-    """Средний цвет левой кромки фото — используется как фон коллажа."""
+    """Средний цвет области под текстом — по нему выбирается цвет буллетов."""
     img = Image.open(io.BytesIO(data)).convert("RGB")
     w, h = img.size
-    strip = img.crop((0, 0, max(1, w // 12), h)).resize((1, 1), Image.LANCZOS)
-    r, g, b = strip.getpixel((0, 0))
+    area = img.crop((0, int(h * 0.08), int(w * 0.62), int(h * 0.36)))
+    r, g, b = area.resize((1, 1), Image.LANCZOS).getpixel((0, 0))
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
@@ -49,10 +49,14 @@ def build_html(
     text_color: str | None = None,
     focus: int = 50,
 ) -> str:
-    """focus — горизонтальное положение кадра основного фото, 0..100 %."""
+    """focus — горизонтальное положение кадра основного фото, 0..100 %.
+
+    Фото занимает весь кадр — подложка не дорисовывается, исходник должен
+    быть готовым вертикальным снимком 3:4 со свободным местом слева.
+    """
     if text_color is None:
-        text_color = "#ffffff" if _luma(bg) < 205 else "#4a4a4a"
-    # мягкая тень — текст частично лежит поверх фото
+        text_color = "#ffffff" if _luma(bg) < 175 else "#4a4a4a"
+    # мягкая тень — текст лежит поверх фото
     shadow = "rgba(0,0,0,0.28)" if text_color == "#ffffff" else "rgba(255,255,255,0.6)"
 
     bullets_html = "\n".join(f"<p>{b}</p>" for b in bullets if b.strip())
@@ -89,8 +93,7 @@ def build_html(
   }}
   .hero {{
     position: absolute;
-    right: 0; top: 0;
-    width: 61%; height: 100%;
+    inset: 0;
     overflow: hidden;
   }}
   .hero img {{
