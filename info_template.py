@@ -22,6 +22,7 @@ GAP_PX = 42            # единый вертикальный ритм: и ме
 INSET_GAP_PX = GAP_PX  # зазор между кругами по вертикали
 INSET_AXIS_PX = 285    # X центра общей вертикальной оси, от левого края
 BULLETS_LEFT_PX = 48   # левый отступ текстового блока
+BULLETS_TOP_PX = 84    # верхний отступ текстового блока (было 198 — на строку ниже)
 INSET_BOTTOM_PX = 156  # отступ нижнего круга от низа
 
 
@@ -71,6 +72,7 @@ def build_html(
     axis = INSET_AXIS_PX / SCALE
     bottom = INSET_BOTTOM_PX / SCALE
     bullets_left = BULLETS_LEFT_PX / SCALE
+    bullets_top = BULLETS_TOP_PX / SCALE
     # одна врезка встаёт на место нижней из пары — ось и низ те же
 
     return f"""<!DOCTYPE html>
@@ -103,7 +105,7 @@ def build_html(
   }}
   .bullets {{
     position: absolute;
-    left: {bullets_left}px; top: 11%;
+    left: {bullets_left}px; top: {bullets_top}px;
     width: 68%;
     z-index: 3;
   }}
