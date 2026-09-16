@@ -23,7 +23,7 @@ INSET_GAP_PX = GAP_PX  # зазор между кругами по вертик�
 INSET_AXIS_PX = 285    # X центра общей вертикальной оси, от левого края
 BULLETS_LEFT_PX = 48   # левый отступ текстового блока
 BULLETS_TOP_PX = 84    # верхний отступ текстового блока (было 198 — на строку ниже)
-INSET_BOTTOM_PX = 156  # отступ нижнего круга от низа
+INSET_BOTTOM_PX = 270  # отступ нижнего круга от низа
 
 
 def bg_color_from_photo(data: bytes) -> str:
